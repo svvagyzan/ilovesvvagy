@@ -394,33 +394,79 @@ export const convertPptxToPdf = async (file: File): Promise<Blob> => {
 
 export const convertPptToPdf = async (file: File): Promise<Blob> => {
   const arrayBuffer = await file.arrayBuffer();
-  const decoder = new TextDecoder("utf-16le");
-  const rawText = decoder.decode(arrayBuffer);
-
-  const matches = rawText.match(/[\u0020-\u007E\u00A0-\u00FF]{3,}/g) || [];
-  const cleanTexts = Array.from(
-    new Set(
-      matches
-        .map((t) => t.trim())
-        .filter(
-          (t) =>
-            t.length > 2 &&
-            !t.includes("Microsoft") &&
-            !t.includes("PowerPoint") &&
-            !t.includes("Font") &&
-            !/^[0-9]+$/.test(t)
-        )
-    )
-  );
+  const bytes = new Uint8Array(arrayBuffer);
 
   const slidesText: string[][] = [];
-  const chunkSize = 5;
-  for (let i = 0; i < cleanTexts.length; i += chunkSize) {
-    slidesText.push(cleanTexts.slice(i, i + chunkSize));
+  let currentSlideTexts: string[] = [];
+
+  for (let i = 0; i < bytes.length - 8; i++) {
+    const recType = bytes[i + 2] | (bytes[i + 3] << 8);
+    const recLen =
+      bytes[i + 4] |
+      (bytes[i + 5] << 8) |
+      (bytes[i + 6] << 16) |
+      (bytes[i + 7] << 24);
+
+    if (recType === 0x03e8 || recType === 0x03ee) {
+      if (currentSlideTexts.length > 0) {
+        slidesText.push([...currentSlideTexts]);
+        currentSlideTexts = [];
+      }
+    }
+
+    if (recLen > 0 && recLen < 50000 && i + 8 + recLen <= bytes.length) {
+      if (recType === 0x0fa8) {
+        let text = "";
+        for (let j = 0; j < recLen; j++) {
+          const charCode = bytes[i + 8 + j];
+          if (charCode >= 32 && charCode <= 126) {
+            text += String.fromCharCode(charCode);
+          } else if (charCode === 10 || charCode === 13) {
+            text += "\n";
+          }
+        }
+        const clean = text.trim();
+        if (
+          clean.length > 1 &&
+          !clean.includes("Root Entry") &&
+          !clean.includes("PowerPoint") &&
+          !clean.includes("Microsoft") &&
+          !clean.startsWith("{")
+        ) {
+          currentSlideTexts.push(clean);
+        }
+      } else if (recType === 0x0fa0) {
+        let text = "";
+        for (let j = 0; j < recLen; j += 2) {
+          const charCode = bytes[i + 8 + j] | (bytes[i + 8 + j + 1] << 8);
+          if (
+            (charCode >= 32 && charCode <= 0xd7ff) ||
+            charCode === 10 ||
+            charCode === 13
+          ) {
+            text += String.fromCharCode(charCode);
+          }
+        }
+        const clean = text.trim();
+        if (
+          clean.length > 1 &&
+          !clean.includes("Root Entry") &&
+          !clean.includes("PowerPoint") &&
+          !clean.includes("Microsoft") &&
+          !clean.startsWith("{")
+        ) {
+          currentSlideTexts.push(clean);
+        }
+      }
+    }
+  }
+
+  if (currentSlideTexts.length > 0) {
+    slidesText.push(currentSlideTexts);
   }
 
   if (slidesText.length === 0) {
-    slidesText.push(["Presentasi PPT", "Berkas berhasil dikonversi."]);
+    slidesText.push(["Slide Presentasi", "Dokumen PPT berhasil dikonversi."]);
   }
 
   const pdf = new jsPDF({
@@ -500,5 +546,7 @@ export const mergePdfs = async (files: File[]): Promise<Blob> => {
   }
 
   const pdfBytes = await mergedPdf.save();
-  return new Blob([pdfBytes as unknown as BlobPart], { type: "application/pdf" });
+  return new Blob([pdfBytes as unknown as BlobPart], {
+    type: "application/pdf",
+  });
 };
