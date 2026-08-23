@@ -1,6 +1,6 @@
 import { jsPDF } from "jspdf";
 import mammoth from "mammoth";
-import { Document, Packer, Paragraph, TextRun, AlignmentType, PageOrientation, HeadingLevel } from "docx";
+import { Document, Packer, Paragraph, TextRun, AlignmentType, PageOrientation } from "docx";
 import { PDFDocument } from "pdf-lib";
 import JSZip from "jszip";
 
@@ -166,7 +166,8 @@ export const convertDocxToPdf = async (file: File): Promise<Blob> => {
       td, th { border: 1px solid #000000; padding: 6pt 8pt; font-size: 11pt; text-align: left; }
       img { max-width: 100%; height: auto; display: block; margin: 10pt auto; }
     </style>
-    <div>${htmlContent}</div>
+
+    <div id="docx-inner-content">${htmlContent}</div>
   `;
   document.body.appendChild(container);
 
@@ -184,6 +185,31 @@ export const convertDocxToPdf = async (file: File): Promise<Blob> => {
         })
     )
   );
+
+  const PAGE_HEIGHT_PX = 1123;
+  const innerContent = container.querySelector("#docx-inner-content") as HTMLElement;
+  if (innerContent) {
+    const children = Array.from(innerContent.children) as HTMLElement[];
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i];
+      const top = child.offsetTop;
+      const height = child.offsetHeight;
+
+      if (height === 0) continue;
+
+      const startPage = Math.floor(top / PAGE_HEIGHT_PX);
+      const endPage = Math.floor((top + height - 1) / PAGE_HEIGHT_PX);
+
+      if (startPage !== endPage && top % PAGE_HEIGHT_PX !== 0) {
+        const nextPageTop = (startPage + 1) * PAGE_HEIGHT_PX;
+        const spacerHeight = nextPageTop - top;
+        const spacer = document.createElement("div");
+        spacer.style.height = `${spacerHeight}px`;
+        spacer.style.width = "100%";
+        innerContent.insertBefore(spacer, child);
+      }
+    }
+  }
 
   const html2canvas = (await import("html2canvas")).default;
   const canvas = await html2canvas(container, {
