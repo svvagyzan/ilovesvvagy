@@ -3,7 +3,8 @@ import mammoth from "mammoth";
 import { Document, Packer, Paragraph, TextRun, AlignmentType, PageOrientation } from "docx";
 
 export const convertPngToPdf = async (files: File[]): Promise<Blob> => {
-  const doc = new jsPDF();
+  let doc: jsPDF | null = null;
+
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
     const imageUrl = URL.createObjectURL(file);
@@ -12,15 +13,27 @@ export const convertPngToPdf = async (files: File[]): Promise<Blob> => {
     await new Promise((resolve) => {
       img.onload = resolve;
     });
-    if (i > 0) {
-      doc.addPage();
+
+    const orientation = img.width > img.height ? "l" : "p";
+
+    if (i === 0) {
+      doc = new jsPDF({
+        orientation,
+        unit: "px",
+        format: [img.width, img.height],
+      });
+    } else if (doc) {
+      doc.addPage([img.width, img.height], orientation);
     }
-    const imgWidth = doc.internal.pageSize.getWidth();
-    const imgHeight = (img.height * imgWidth) / img.width;
-    doc.addImage(img, "PNG", 0, 0, imgWidth, imgHeight);
+
+    if (doc) {
+      doc.addImage(img, "PNG", 0, 0, img.width, img.height);
+    }
+
     URL.revokeObjectURL(imageUrl);
   }
-  return doc.output("blob");
+
+  return doc ? doc.output("blob") : new Blob();
 };
 
 export const convertPdfToPng = async (file: File): Promise<Blob[]> => {
