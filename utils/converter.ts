@@ -138,38 +138,64 @@ export const convertDocxToPdf = async (file: File): Promise<Blob> => {
   const result = await mammoth.convertToHtml({ arrayBuffer });
   const htmlContent = result.value;
 
+  const tempDiv = document.createElement("div");
+  tempDiv.innerHTML = htmlContent;
+  const children = Array.from(tempDiv.childNodes);
+
   const container = document.createElement("div");
   container.style.position = "absolute";
   container.style.left = "-9999px";
   container.style.top = "-9999px";
-  container.style.width = "794px";
-  container.style.padding = "72px 96px";
-  container.style.boxSizing = "border-box";
-  container.style.background = "#ffffff";
-  container.style.color = "#000000";
-  container.style.fontFamily = "'Times New Roman', Times, serif";
-  container.style.fontSize = "12pt";
-  container.style.lineHeight = "1.5";
+  document.body.appendChild(container);
 
-  container.innerHTML = `
-    <style>
+  const createPage = () => {
+    const page = document.createElement("div");
+    page.style.width = "794px";
+    page.style.height = "1123px";
+    page.style.padding = "72px 96px";
+    page.style.boxSizing = "border-box";
+    page.style.background = "#ffffff";
+    page.style.color = "#000000";
+    page.style.fontFamily = "'Times New Roman', Times, serif";
+    page.style.fontSize = "12pt";
+    page.style.lineHeight = "1.5";
+    page.style.overflow = "hidden";
+
+    const styleEl = document.createElement("style");
+    styleEl.innerHTML = `
       * { box-sizing: border-box; }
-      body, div { font-family: 'Times New Roman', Times, serif; color: #000000; }
-      p { margin: 0 0 10pt 0; line-height: 1.5; text-align: justify; text-justify: inter-word; word-break: break-word; font-size: 12pt; }
-      h1, h2, h3, h4, h5, h6 { margin: 12pt 0 6pt 0; font-weight: bold; line-height: 1.2; color: #000000; }
+      p { margin: 0 0 10pt 0; line-height: 1.5; text-align: justify; text-justify: inter-word; word-break: break-word; font-size: 12pt; font-family: 'Times New Roman', Times, serif; }
+      h1, h2, h3, h4, h5, h6 { margin: 12pt 0 6pt 0; font-weight: bold; line-height: 1.2; color: #000000; font-family: 'Times New Roman', Times, serif; }
       h1 { font-size: 18pt; }
       h2 { font-size: 16pt; }
       h3 { font-size: 14pt; }
       ul, ol { margin: 0 0 10pt 0; padding-left: 24pt; }
-      li { margin-bottom: 4pt; line-height: 1.5; }
+      li { margin-bottom: 4pt; line-height: 1.5; font-size: 12pt; font-family: 'Times New Roman', Times, serif; }
       table { width: 100%; border-collapse: collapse; margin-bottom: 12pt; }
-      td, th { border: 1px solid #000000; padding: 6pt 8pt; font-size: 11pt; text-align: left; }
+      td, th { border: 1px solid #000000; padding: 6pt 8pt; font-size: 11pt; text-align: left; font-family: 'Times New Roman', Times, serif; }
       img { max-width: 100%; height: auto; display: block; margin: 10pt auto; }
-    </style>
+    `;
+    page.appendChild(styleEl);
+    return page;
+  };
 
-    <div id="docx-inner-content">${htmlContent}</div>
-  `;
-  document.body.appendChild(container);
+  const pages: HTMLElement[] = [];
+  let currentPage = createPage();
+  container.appendChild(currentPage);
+  pages.push(currentPage);
+
+  for (const child of children) {
+    const clone = child.cloneNode(true);
+    currentPage.appendChild(clone);
+
+    if (currentPage.scrollHeight > 1123 && currentPage.children.length > 2) {
+      currentPage.removeChild(clone);
+      currentPage = createPage();
+      container.appendChild(currentPage);
+      pages.push(currentPage);
+      currentPage.appendChild(clone);
+    }
+  }
 
   const images = Array.from(container.querySelectorAll("img"));
   await Promise.all(
@@ -186,84 +212,28 @@ export const convertDocxToPdf = async (file: File): Promise<Blob> => {
     )
   );
 
-  const PAGE_HEIGHT_PX = 1123;
-  const innerContent = container.querySelector("#docx-inner-content") as HTMLElement;
-  if (innerContent) {
-    const children = Array.from(innerContent.children) as HTMLElement[];
-    for (let i = 0; i < children.length; i++) {
-      const child = children[i];
-      const top = child.offsetTop;
-      const height = child.offsetHeight;
-
-      if (height === 0) continue;
-
-      const startPage = Math.floor(top / PAGE_HEIGHT_PX);
-      const endPage = Math.floor((top + height - 1) / PAGE_HEIGHT_PX);
-
-      if (startPage !== endPage && top % PAGE_HEIGHT_PX !== 0) {
-        const nextPageTop = (startPage + 1) * PAGE_HEIGHT_PX;
-        const spacerHeight = nextPageTop - top;
-        const spacer = document.createElement("div");
-        spacer.style.height = `${spacerHeight}px`;
-        spacer.style.width = "100%";
-        innerContent.insertBefore(spacer, child);
-      }
-    }
-  }
-
   const html2canvas = (await import("html2canvas")).default;
-  const canvas = await html2canvas(container, {
-    scale: 2,
-    useCORS: true,
-    logging: false,
-    windowWidth: 794,
-  });
-
-  document.body.removeChild(container);
-
   const pdf = new jsPDF("p", "mm", "a4");
   const pdfWidth = pdf.internal.pageSize.getWidth();
   const pdfHeight = pdf.internal.pageSize.getHeight();
 
-  const totalHeightPx = canvas.height;
-  const pageHeightPx = Math.round((canvas.width * 297) / 210);
+  for (let i = 0; i < pages.length; i++) {
+    const pageEl = pages[i];
+    const canvas = await html2canvas(pageEl, {
+      scale: 2,
+      useCORS: true,
+      logging: false,
+      windowWidth: 794,
+    });
 
-  const pageCanvas = document.createElement("canvas");
-  pageCanvas.width = canvas.width;
-  pageCanvas.height = pageHeightPx;
-  const pageCtx = pageCanvas.getContext("2d");
-
-  let renderedHeight = 0;
-  let pageIndex = 0;
-
-  while (renderedHeight < totalHeightPx) {
-    if (pageIndex > 0) {
+    const pageImgData = canvas.toDataURL("image/jpeg", 0.98);
+    if (i > 0) {
       pdf.addPage();
     }
-
-    if (pageCtx) {
-      pageCtx.fillStyle = "#ffffff";
-      pageCtx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
-      pageCtx.drawImage(
-        canvas,
-        0,
-        renderedHeight,
-        canvas.width,
-        pageHeightPx,
-        0,
-        0,
-        canvas.width,
-        pageHeightPx
-      );
-    }
-
-    const pageImgData = pageCanvas.toDataURL("image/jpeg", 0.98);
     pdf.addImage(pageImgData, "JPEG", 0, 0, pdfWidth, pdfHeight);
-
-    renderedHeight += pageHeightPx;
-    pageIndex++;
   }
 
+  document.body.removeChild(container);
   return pdf.output("blob");
 };
 
