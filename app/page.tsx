@@ -7,6 +7,8 @@ import {
   convertDocxToPdf,
   convertPdfToDocx,
   convertPngToJpg,
+  convertPptxToPdf,
+  mergePdfs,
 } from "@/utils/converter";
 
 interface ToolItem {
@@ -60,6 +62,23 @@ const toolsData: ToolItem[] = [
     to: "JPG",
     description: "Kompres PNG menjadi JPG dengan latar putih dan ukuran lebih ringan.",
     accept: "image/png",
+    multiple: true,
+  },
+  {
+    id: "pptx-to-pdf",
+    category: "Presentasi ke Dokumen",
+    from: "PPTX",
+    to: "PDF",
+    description: "Ubah slide presentasi PowerPoint menjadi berkas PDF.",
+    accept: ".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  },
+  {
+    id: "pdf-merge",
+    category: "Dokumen",
+    from: "PDF",
+    to: "PDF (Merge)",
+    description: "Gabungkan beberapa berkas PDF menjadi satu berkas PDF utuh.",
+    accept: "application/pdf",
     multiple: true,
   },
 ];
@@ -120,6 +139,14 @@ export default function Home() {
           const baseName = getBaseName(fileList[idx].name);
           downloadBlob(blob, `${baseName}.jpg`);
         });
+      } else if (selectedTool.id === "pptx-to-pdf") {
+        const baseName = getBaseName(fileList[0].name);
+        const pdfBlob = await convertPptxToPdf(fileList[0]);
+        downloadBlob(pdfBlob, `${baseName}.pdf`);
+      } else if (selectedTool.id === "pdf-merge") {
+        const baseName = getBaseName(fileList[0].name);
+        const pdfBlob = await mergePdfs(fileList);
+        downloadBlob(pdfBlob, `${baseName}-merged.pdf`);
       }
       setStatus("Konversi selesai! Berkas berhasil diunduh.");
     } catch {
@@ -165,7 +192,7 @@ export default function Home() {
             Convert berkas dengan presisi, langsung dari browser.
           </h1>
           <p className="text-slate-500 text-sm sm:text-lg leading-relaxed">
-            Lima tool terpisah untuk lima kebutuhan. Pilih satu, taruh berkasnya, unduh hasilnya — tanpa akun dan tanpa mengunggah apa pun.
+            Tujuh tool terpisah untuk berbagai kebutuhan. Pilih satu, taruh berkasnya, unduh hasilnya — tanpa akun dan tanpa mengunggah apa pun.
           </p>
           {status && (
             <div className="mt-5 sm:mt-6 p-3 bg-blue-50 border border-blue-200 text-blue-700 font-medium rounded-xl inline-block text-xs sm:text-sm">

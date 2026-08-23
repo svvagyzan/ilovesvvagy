@@ -1,6 +1,8 @@
 import { jsPDF } from "jspdf";
 import mammoth from "mammoth";
 import { Document, Packer, Paragraph, TextRun, AlignmentType, PageOrientation } from "docx";
+import { PDFDocument } from "pdf-lib";
+import JSZip from "jszip";
 
 export const convertPngToPdf = async (files: File[]): Promise<Blob> => {
   let doc: jsPDF | null = null;
@@ -80,16 +82,7 @@ export const convertDocxToPdf = async (file: File): Promise<Blob> => {
   container.style.fontFamily = "Arial, sans-serif";
   container.style.fontSize = "14px";
   container.style.lineHeight = "1.5";
-  container.innerHTML = `
-    <style>
-      table { border-collapse: collapse; width: 100%; margin: 12px 0; }
-      th, td { border: 1px solid #000; padding: 6px 10px; text-align: left; }
-      p { margin: 8px 0; }
-      h1, h2, h3, h4, h5, h6 { margin: 12px 0 6px 0; }
-      img { max-width: 100%; max-height: 1000px; height: auto; display: block; margin: 8px auto; }
-    </style>
-    ${htmlContent}
-  `;
+  container.innerHTML = htmlContent;
   document.body.appendChild(container);
 
   const images = Array.from(container.querySelectorAll("img"));
@@ -108,9 +101,7 @@ export const convertDocxToPdf = async (file: File): Promise<Blob> => {
   );
 
   const PAGE_HEIGHT = 1123;
-  const children = Array.from(container.children).filter(
-    (el) => el.tagName !== "STYLE"
-  ) as HTMLElement[];
+  const children = Array.from(container.children) as HTMLElement[];
 
   for (let i = 0; i < children.length; i++) {
     const child = children[i];
@@ -302,4 +293,115 @@ export const convertPngToJpg = async (files: File[]): Promise<Blob[]> => {
     URL.revokeObjectURL(imageUrl);
   }
   return blobs;
+};
+
+export const convertPptxToPdf = async (file: File): Promise<Blob> => {
+  const arrayBuffer = await file.arrayBuffer();
+  const zip = await JSZip.loadAsync(arrayBuffer);
+
+  const slideFiles: string[] = [];
+  zip.forEach((relativePath) => {
+    if (relativePath.match(/^ppt\/slides\/slide\d+\.xml$/)) {
+      slideFiles.push(relativePath);
+    }
+  });
+
+  slideFiles.sort((a, b) => {
+    const numA = parseInt(a.match(/\d+/)![0], 10);
+    const numB = parseInt(b.match(/\d+/)![0], 10);
+    return numA - numB;
+  });
+
+  const pdf = new jsPDF({
+    orientation: "l",
+    unit: "mm",
+    format: "a4",
+  });
+
+  const html2canvas = (await import("html2canvas")).default;
+  const pdfWidth = pdf.internal.pageSize.getWidth();
+  const pdfHeight = pdf.internal.pageSize.getHeight();
+
+  for (let i = 0; i < slideFiles.length; i++) {
+    const slideXmlText = await zip.file(slideFiles[i])?.async("string");
+    if (!slideXmlText) continue;
+
+    const parser = new DOMParser();
+    const xmlDoc = parser.parseFromString(slideXmlText, "text/xml");
+    const textNodes = Array.from(xmlDoc.getElementsByTagName("a:t"));
+    const slideTexts = textNodes
+      .map((node) => node.textContent || "")
+      .filter((t) => t.trim() !== "");
+
+    const container = document.createElement("div");
+    container.style.position = "absolute";
+    container.style.left = "-9999px";
+    container.style.top = "-9999px";
+    container.style.width = "1280px";
+    container.style.height = "720px";
+    container.style.background = "#ffffff";
+    container.style.color = "#1e293b";
+    container.style.padding = "60px";
+    container.style.boxSizing = "border-box";
+    container.style.fontFamily = "Arial, sans-serif";
+    container.style.display = "flex";
+    container.style.flexDirection = "column";
+    container.style.justifyContent = "center";
+    container.style.gap = "20px";
+    container.style.border = "1px solid #e2e8f0";
+
+    if (slideTexts.length > 0) {
+      const titleEl = document.createElement("h1");
+      titleEl.style.fontSize = "36px";
+      titleEl.style.fontWeight = "bold";
+      titleEl.style.color = "#0f172a";
+      titleEl.innerText = slideTexts[0];
+      container.appendChild(titleEl);
+
+      for (let j = 1; j < slideTexts.length; j++) {
+        const pEl = document.createElement("p");
+        pEl.style.fontSize = "22px";
+        pEl.style.lineHeight = "1.6";
+        pEl.innerText = slideTexts[j];
+        container.appendChild(pEl);
+      }
+    } else {
+      const emptyEl = document.createElement("p");
+      emptyEl.style.fontSize = "24px";
+      emptyEl.innerText = `Slide ${i + 1}`;
+      container.appendChild(emptyEl);
+    }
+
+    document.body.appendChild(container);
+
+    const canvas = await html2canvas(container, {
+      scale: 2,
+      useCORS: true,
+      logging: false,
+    });
+
+    document.body.removeChild(container);
+
+    const imgData = canvas.toDataURL("image/jpeg", 0.95);
+    if (i > 0) {
+      pdf.addPage();
+    }
+    pdf.addImage(imgData, "JPEG", 0, 0, pdfWidth, pdfHeight);
+  }
+
+  return pdf.output("blob");
+};
+
+export const mergePdfs = async (files: File[]): Promise<Blob> => {
+  const mergedPdf = await PDFDocument.create();
+
+  for (const file of files) {
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await PDFDocument.load(arrayBuffer);
+    const copiedPages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
+    copiedPages.forEach((page) => mergedPdf.addPage(page));
+  }
+
+  const pdfBytes = await mergedPdf.save();
+  return new Blob([pdfBytes as unknown as BlobPart], { type: "application/pdf" });
 };
