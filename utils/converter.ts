@@ -1,45 +1,8 @@
 import { jsPDF } from "jspdf";
 import mammoth from "mammoth";
-import { Document, Packer, Paragraph, TextRun, AlignmentType, PageOrientation } from "docx";
+import { Document, Packer, Paragraph, TextRun, AlignmentType, PageOrientation, HeadingLevel } from "docx";
 import { PDFDocument } from "pdf-lib";
 import JSZip from "jszip";
-
-const BANNED_PPT_PHRASES = [
-  "click to edit",
-  "outline level",
-  "second outline",
-  "third outline",
-  "fourth outline",
-  "fifth outline",
-  "sixth outline",
-  "seventh outline",
-  "root entry",
-  "microsoft powerpoint",
-  "slide master",
-  "title text format",
-  "droid sans",
-  "times new roman",
-  "calibri",
-  "arial",
-];
-
-const isValidSlideText = (text: string): boolean => {
-  const trimmed = text.trim();
-  if (trimmed.length <= 1) return false;
-  if (
-    trimmed.startsWith("{") ||
-    trimmed.startsWith("ÿ") ||
-    trimmed.startsWith("#") ||
-    trimmed.startsWith("¤")
-  ) {
-    return false;
-  }
-  const lower = trimmed.toLowerCase();
-  for (const phrase of BANNED_PPT_PHRASES) {
-    if (lower.includes(phrase)) return false;
-  }
-  return true;
-};
 
 const uint8ToBase64 = (bytes: Uint8Array): string => {
   let binary = "";
@@ -172,7 +135,18 @@ export const convertPdfToPng = async (file: File): Promise<Blob[]> => {
 
 export const convertDocxToPdf = async (file: File): Promise<Blob> => {
   const arrayBuffer = await file.arrayBuffer();
-  const result = await mammoth.convertToHtml({ arrayBuffer });
+  const result = await mammoth.convertToHtml(
+    { arrayBuffer },
+    {
+      styleMap: [
+        "p[style-name='Heading 1'] => h1:fresh",
+        "p[style-name='Heading 2'] => h2:fresh",
+        "p[style-name='Heading 3'] => h3:fresh",
+        "r[style-name='Strong'] => strong",
+        "r[style-name='Emphasis'] => em",
+      ],
+    }
+  );
   const htmlContent = result.value;
 
   const container = document.createElement("div");
@@ -180,14 +154,30 @@ export const convertDocxToPdf = async (file: File): Promise<Blob> => {
   container.style.left = "-9999px";
   container.style.top = "-9999px";
   container.style.width = "794px";
-  container.style.padding = "48px";
+  container.style.minHeight = "1123px";
+  container.style.padding = "96px";
   container.style.boxSizing = "border-box";
   container.style.background = "#ffffff";
-  container.style.color = "#000000";
-  container.style.fontFamily = "Arial, sans-serif";
-  container.style.fontSize = "14px";
-  container.style.lineHeight = "1.5";
-  container.innerHTML = htmlContent;
+  container.style.color = "#111827";
+  container.style.fontFamily = "Calibri, Arial, sans-serif";
+  container.style.fontSize = "16px";
+  container.style.lineHeight = "1.6";
+  container.innerHTML = `
+    <style>
+      h1 { font-size: 28px; font-weight: bold; margin-top: 24px; margin-bottom: 16px; color: #111827; line-height: 1.2; }
+      h2 { font-size: 22px; font-weight: bold; margin-top: 20px; margin-bottom: 12px; color: #1f2937; line-height: 1.3; }
+      h3 { font-size: 18px; font-weight: bold; margin-top: 16px; margin-bottom: 8px; color: #374151; line-height: 1.4; }
+      p { margin-top: 0; margin-bottom: 16px; text-align: justify; word-break: break-word; }
+      ul, ol { margin-top: 0; margin-bottom: 16px; padding-left: 32px; }
+      li { margin-bottom: 6px; }
+      table { width: 100%; border-collapse: collapse; margin-bottom: 24px; font-size: 15px; }
+      th, td { border: 1px solid #d1d5db; padding: 10px 14px; text-align: left; }
+      th { background-color: #f3f4f6; font-weight: bold; color: #1f2937; }
+      img { max-width: 100%; height: auto; display: block; margin: 16px auto; border-radius: 4px; }
+      blockquote { border-left: 4px solid #3b82f6; margin: 0 0 16px 0; padding-left: 16px; color: #4b5563; font-style: italic; }
+    </style>
+    ${htmlContent}
+  `;
   document.body.appendChild(container);
 
   const images = Array.from(container.querySelectorAll("img"));
@@ -205,34 +195,12 @@ export const convertDocxToPdf = async (file: File): Promise<Blob> => {
     )
   );
 
-  const PAGE_HEIGHT = 1123;
-  const children = Array.from(container.children) as HTMLElement[];
-
-  for (let i = 0; i < children.length; i++) {
-    const child = children[i];
-    const top = child.offsetTop;
-    const height = child.offsetHeight;
-
-    if (height === 0) continue;
-
-    const startPage = Math.floor(top / PAGE_HEIGHT);
-    const endPage = Math.floor((top + height - 1) / PAGE_HEIGHT);
-
-    if (startPage !== endPage && top % PAGE_HEIGHT !== 0) {
-      const nextPageTop = (startPage + 1) * PAGE_HEIGHT;
-      const spacerHeight = nextPageTop - top;
-      const spacer = document.createElement("div");
-      spacer.style.height = `${spacerHeight}px`;
-      spacer.style.width = "100%";
-      container.insertBefore(spacer, child);
-    }
-  }
-
   const html2canvas = (await import("html2canvas")).default;
   const canvas = await html2canvas(container, {
     scale: 2,
     useCORS: true,
     logging: false,
+    windowWidth: 794,
   });
 
   document.body.removeChild(container);
@@ -302,7 +270,7 @@ export const convertPdfToDocx = async (file: File): Promise<Blob> => {
     for (const item of textContent.items as any[]) {
       if (!item.str || item.str.trim() === "") continue;
       const y = Math.round(item.transform[5]);
-      let foundY = Array.from(linesMap.keys()).find((k) => Math.abs(k - y) <= 4);
+      let foundY = Array.from(linesMap.keys()).find((k) => Math.abs(k - y) <= 5);
       if (foundY === undefined) {
         foundY = y;
         linesMap.set(foundY, []);
@@ -312,36 +280,73 @@ export const convertPdfToDocx = async (file: File): Promise<Blob> => {
 
     const sortedYs = Array.from(linesMap.keys()).sort((a, b) => b - a);
 
-    for (const y of sortedYs) {
+    for (let i = 0; i < sortedYs.length; i++) {
+      const y = sortedYs[i];
       const items = linesMap.get(y)!;
       items.sort((a, b) => a.transform[4] - b.transform[4]);
 
-      const lineText = items.map((it) => it.str).join(" ").replace(/\s+/g, " ").trim();
-      if (!lineText) continue;
+      let spaceBefore = 0;
+      let spaceAfter = 120;
+      if (i > 0) {
+        const prevY = sortedYs[i - 1];
+        const diff = Math.abs(prevY - y);
+        if (diff > 24) {
+          spaceBefore = Math.min(Math.round((diff - 16) * 20), 480);
+        }
+      }
 
-      const minX = items[0].transform[4];
-      const maxX = items[items.length - 1].transform[4] + (items[items.length - 1].width || 0);
+      const textRuns: TextRun[] = [];
+      let fullLineText = "";
+      let minX = items[0].transform[4];
+      let maxX = items[items.length - 1].transform[4] + (items[items.length - 1].width || 0);
+
+      for (const item of items) {
+        const str = item.str;
+        fullLineText += str + " ";
+
+        const fontSizePt = Math.round(Math.abs(item.transform[0]) * 11) || 22;
+        const fontName = "Arial";
+        const isBold = item.fontName && item.fontName.toLowerCase().includes("bold");
+        const isItalic = item.fontName && item.fontName.toLowerCase().includes("italic");
+
+        textRuns.push(
+          new TextRun({
+            text: str,
+            font: fontName,
+            size: fontSizePt * 2,
+            bold: isBold,
+            italics: isItalic,
+          })
+        );
+      }
+
+      const trimmedText = fullLineText.replace(/\s+/g, " ").trim();
+      if (!trimmedText) continue;
+
       const pageMiddle = viewport.width / 2;
       const lineMiddle = (minX + maxX) / 2;
 
       let alignment: (typeof AlignmentType)[keyof typeof AlignmentType] = AlignmentType.LEFT;
       if (Math.abs(lineMiddle - pageMiddle) < 40 && minX > 50) {
         alignment = AlignmentType.CENTER;
-      } else if (minX > viewport.width * 0.6) {
+      } else if (minX > viewport.width * 0.65) {
         alignment = AlignmentType.RIGHT;
+      }
+
+      let headingLevel = undefined;
+      const avgFontSize = items.reduce((acc, it) => acc + Math.abs(it.transform[0]), 0) / items.length;
+      if (avgFontSize > 16 && trimmedText.length < 80) {
+        headingLevel = 1;
+      } else if (avgFontSize > 13 && trimmedText.length < 100) {
+        headingLevel = 2;
       }
 
       paragraphs.push(
         new Paragraph({
           alignment,
-          spacing: { after: 120 },
-          children: [
-            new TextRun({
-              text: lineText,
-              font: "Arial",
-              size: 22,
-            }),
-          ],
+          heading: headingLevel ? (headingLevel === 1 ? HeadingLevel.HEADING_1 : HeadingLevel.HEADING_2) : undefined,
+          spacing: { before: spaceBefore, after: spaceAfter, line: 276 },
+          children: textRuns,
         })
       );
     }
@@ -474,7 +479,7 @@ export const convertPptxToPdf = async (file: File): Promise<Blob> => {
     for (const pNode of pNodes) {
       const tNodes = Array.from(pNode.getElementsByTagName("a:t"));
       const lineText = tNodes.map((n) => n.textContent || "").join(" ").trim();
-      if (lineText.length > 0 && isValidSlideText(lineText)) {
+      if (lineText.length > 0) {
         paragraphs.push(lineText);
       }
     }
@@ -523,26 +528,24 @@ export const convertPptxToPdf = async (file: File): Promise<Blob> => {
     container.style.alignItems = "stretch";
     container.style.border = "1px solid #e2e8f0";
 
-    let titleText = `Slide ${i + 1}`;
     if (paragraphs.length > 0) {
-      titleText = paragraphs[0];
+      const titleText = paragraphs[0];
+      const banner = document.createElement("div");
+      banner.style.backgroundColor = "#a3e635";
+      banner.style.padding = "10px 24px";
+      banner.style.borderRadius = "4px";
+      banner.style.marginBottom = "24px";
+      banner.style.alignSelf = "flex-start";
+
+      const h1 = document.createElement("h1");
+      h1.style.fontSize = "32px";
+      h1.style.fontWeight = "bold";
+      h1.style.color = "#000000";
+      h1.style.margin = "0";
+      h1.innerText = titleText;
+      banner.appendChild(h1);
+      container.appendChild(banner);
     }
-
-    const banner = document.createElement("div");
-    banner.style.backgroundColor = "#a3e635";
-    banner.style.padding = "10px 24px";
-    banner.style.borderRadius = "4px";
-    banner.style.marginBottom = "24px";
-    banner.style.alignSelf = "flex-start";
-
-    const h1 = document.createElement("h1");
-    h1.style.fontSize = "32px";
-    h1.style.fontWeight = "bold";
-    h1.style.color = "#000000";
-    h1.style.margin = "0";
-    h1.innerText = titleText;
-    banner.appendChild(h1);
-    container.appendChild(banner);
 
     const contentBox = document.createElement("div");
     contentBox.style.flex = "1";
@@ -665,7 +668,7 @@ export const convertPptToPdf = async (file: File): Promise<Blob> => {
           }
         }
         const clean = text.trim();
-        if (isValidSlideText(clean)) {
+        if (clean.length > 1) {
           if (!currentSlideTexts.includes(clean)) {
             currentSlideTexts.push(clean);
           }
@@ -683,7 +686,7 @@ export const convertPptToPdf = async (file: File): Promise<Blob> => {
           }
         }
         const clean = text.trim();
-        if (isValidSlideText(clean)) {
+        if (clean.length > 1) {
           if (!currentSlideTexts.includes(clean)) {
             currentSlideTexts.push(clean);
           }
@@ -782,60 +785,14 @@ export const convertPptToPdf = async (file: File): Promise<Blob> => {
       contentBox.appendChild(imgEl);
     }
 
-    const tableItems = bodyTexts.filter((t) =>
-      t.toLowerCase().includes("column") || t.toLowerCase().includes("row")
-    );
-
-    if (tableItems.length > 0 || titleText.toLowerCase().includes("table")) {
-      const table = document.createElement("table");
-      table.style.width = "100%";
-      table.style.borderCollapse = "collapse";
-      table.style.fontSize = "18px";
-      table.style.marginTop = "16px";
-
-      const trHead = document.createElement("tr");
-      trHead.style.background = "#94a3b8";
-      trHead.style.color = "#ffffff";
-      trHead.style.fontWeight = "bold";
-
-      const cols = tableItems.length > 0 ? tableItems : ["Column 1", "Column 2", "Column 3", "Column 4", "Column 5"];
-      cols.forEach((colName) => {
-        const th = document.createElement("th");
-        th.style.padding = "14px";
-        th.style.border = "1px solid #cbd5e1";
-        th.style.textAlign = "left";
-        th.innerText = colName;
-        trHead.appendChild(th);
-      });
-      table.appendChild(trHead);
-
-      for (let r = 1; r <= 3; r++) {
-        const tr = document.createElement("tr");
-        tr.style.background = r % 2 === 0 ? "#f8fafc" : "#ffffff";
-        cols.forEach((_, cIdx) => {
-          const td = document.createElement("td");
-          td.style.padding = "14px";
-          td.style.border = "1px solid #e2e8f0";
-          td.innerText = `Data ${r}-${cIdx + 1}`;
-          tr.appendChild(td);
-        });
-        table.appendChild(tr);
-      }
-
-      contentBox.appendChild(table);
-    } else {
-      const otherTexts = bodyTexts.filter(
-        (t) => !tableItems.includes(t)
-      );
-      for (const pText of otherTexts) {
-        const p = document.createElement("p");
-        p.style.fontSize = "18px";
-        p.style.lineHeight = "1.6";
-        p.style.color = "#1e293b";
-        p.style.marginBottom = "12px";
-        p.innerText = pText;
-        contentBox.appendChild(p);
-      }
+    for (const pText of bodyTexts) {
+      const p = document.createElement("p");
+      p.style.fontSize = "18px";
+      p.style.lineHeight = "1.6";
+      p.style.color = "#1e293b";
+      p.style.marginBottom = "12px";
+      p.innerText = pText;
+      contentBox.appendChild(p);
     }
 
     container.appendChild(contentBox);
