@@ -145,6 +145,7 @@ export const convertDocxToPdf = async (file: File): Promise<Blob> => {
         "r[style-name='Strong'] => strong",
         "r[style-name='Emphasis'] => em",
       ],
+      includeDefaultStyleMap: true,
     }
   );
   const htmlContent = result.value;
@@ -158,23 +159,22 @@ export const convertDocxToPdf = async (file: File): Promise<Blob> => {
   container.style.padding = "96px";
   container.style.boxSizing = "border-box";
   container.style.background = "#ffffff";
-  container.style.color = "#111827";
-  container.style.fontFamily = "Calibri, Arial, sans-serif";
+  container.style.color = "#000000";
+  container.style.fontFamily = "'Times New Roman', Times, Calibri, Arial, serif";
   container.style.fontSize = "16px";
-  container.style.lineHeight = "1.6";
+  container.style.lineHeight = "1.15";
+  container.style.whiteSpace = "pre-wrap";
   container.innerHTML = `
     <style>
-      h1 { font-size: 28px; font-weight: bold; margin-top: 24px; margin-bottom: 16px; color: #111827; line-height: 1.2; }
-      h2 { font-size: 22px; font-weight: bold; margin-top: 20px; margin-bottom: 12px; color: #1f2937; line-height: 1.3; }
-      h3 { font-size: 18px; font-weight: bold; margin-top: 16px; margin-bottom: 8px; color: #374151; line-height: 1.4; }
-      p { margin-top: 0; margin-bottom: 16px; text-align: justify; word-break: break-word; }
-      ul, ol { margin-top: 0; margin-bottom: 16px; padding-left: 32px; }
-      li { margin-bottom: 6px; }
-      table { width: 100%; border-collapse: collapse; margin-bottom: 24px; font-size: 15px; }
-      th, td { border: 1px solid #d1d5db; padding: 10px 14px; text-align: left; }
-      th { background-color: #f3f4f6; font-weight: bold; color: #1f2937; }
-      img { max-width: 100%; height: auto; display: block; margin: 16px auto; border-radius: 4px; }
-      blockquote { border-left: 4px solid #3b82f6; margin: 0 0 16px 0; padding-left: 16px; color: #4b5563; font-style: italic; }
+      p { margin-top: 0; margin-bottom: 10px; text-align: justify; text-justify: inter-word; line-height: 1.15; word-break: break-word; }
+      h1 { font-size: 24px; font-weight: bold; margin-top: 14px; margin-bottom: 10px; color: #000; }
+      h2 { font-size: 20px; font-weight: bold; margin-top: 12px; margin-bottom: 8px; color: #000; }
+      h3 { font-size: 18px; font-weight: bold; margin-top: 10px; margin-bottom: 6px; color: #000; }
+      ol, ul { margin-top: 0; margin-bottom: 10px; padding-left: 24px; }
+      li { margin-bottom: 4px; line-height: 1.15; }
+      table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+      td, th { border: 1px solid #000; padding: 6px 8px; font-size: 14px; text-align: left; }
+      img { max-width: 100%; height: auto; display: block; margin: 12px auto; }
     </style>
     ${htmlContent}
   `;
@@ -241,7 +241,7 @@ export const convertDocxToPdf = async (file: File): Promise<Blob> => {
       );
     }
 
-    const pageImgData = pageCanvas.toDataURL("image/jpeg", 0.95);
+    const pageImgData = pageCanvas.toDataURL("image/jpeg", 0.98);
     pdf.addImage(pageImgData, "JPEG", 0, 0, pdfWidth, pdfHeight);
 
     renderedHeight += pageHeightPx;
@@ -268,9 +268,9 @@ export const convertPdfToDocx = async (file: File): Promise<Blob> => {
     const linesMap = new Map<number, any[]>();
 
     for (const item of textContent.items as any[]) {
-      if (!item.str || item.str.trim() === "") continue;
+      if (!item.str || item.str === "") continue;
       const y = Math.round(item.transform[5]);
-      let foundY = Array.from(linesMap.keys()).find((k) => Math.abs(k - y) <= 5);
+      let foundY = Array.from(linesMap.keys()).find((k) => Math.abs(k - y) <= 3);
       if (foundY === undefined) {
         foundY = y;
         linesMap.set(foundY, []);
@@ -286,65 +286,68 @@ export const convertPdfToDocx = async (file: File): Promise<Blob> => {
       items.sort((a, b) => a.transform[4] - b.transform[4]);
 
       let spaceBefore = 0;
-      let spaceAfter = 120;
+      let spaceAfter = 60;
+
       if (i > 0) {
         const prevY = sortedYs[i - 1];
         const diff = Math.abs(prevY - y);
-        if (diff > 24) {
-          spaceBefore = Math.min(Math.round((diff - 16) * 20), 480);
+        if (diff > 18) {
+          spaceBefore = Math.min(Math.round((diff - 14) * 15), 360);
         }
       }
 
       const textRuns: TextRun[] = [];
-      let fullLineText = "";
-      let minX = items[0].transform[4];
-      let maxX = items[items.length - 1].transform[4] + (items[items.length - 1].width || 0);
+      let lineStr = "";
+      let prevXEnd = -1;
 
-      for (const item of items) {
-        const str = item.str;
-        fullLineText += str + " ";
+      for (let j = 0; j < items.length; j++) {
+        const item = items[j];
+        const x = item.transform[4];
+        const width = item.width || 0;
 
-        const fontSizePt = Math.round(Math.abs(item.transform[0]) * 11) || 22;
-        const fontName = "Arial";
+        if (prevXEnd !== -1 && x - prevXEnd > 4 && !item.str.startsWith(" ")) {
+          textRuns.push(new TextRun({ text: " ", font: "Times New Roman" }));
+          lineStr += " ";
+        }
+
+        const fontSizePt = Math.round(Math.abs(item.transform[0])) || 12;
         const isBold = item.fontName && item.fontName.toLowerCase().includes("bold");
         const isItalic = item.fontName && item.fontName.toLowerCase().includes("italic");
 
         textRuns.push(
           new TextRun({
-            text: str,
-            font: fontName,
+            text: item.str,
+            font: "Times New Roman",
             size: fontSizePt * 2,
             bold: isBold,
             italics: isItalic,
           })
         );
+
+        lineStr += item.str;
+        prevXEnd = x + width;
       }
 
-      const trimmedText = fullLineText.replace(/\s+/g, " ").trim();
+      const trimmedText = lineStr.trim();
       if (!trimmedText) continue;
 
+      const minX = items[0].transform[4];
+      const maxX = items[items.length - 1].transform[4] + (items[items.length - 1].width || 0);
       const pageMiddle = viewport.width / 2;
       const lineMiddle = (minX + maxX) / 2;
 
       let alignment: (typeof AlignmentType)[keyof typeof AlignmentType] = AlignmentType.LEFT;
-      if (Math.abs(lineMiddle - pageMiddle) < 40 && minX > 50) {
+      if (Math.abs(lineMiddle - pageMiddle) < 30 && minX > 60) {
         alignment = AlignmentType.CENTER;
       } else if (minX > viewport.width * 0.65) {
         alignment = AlignmentType.RIGHT;
-      }
-
-      let headingLevel = undefined;
-      const avgFontSize = items.reduce((acc, it) => acc + Math.abs(it.transform[0]), 0) / items.length;
-      if (avgFontSize > 16 && trimmedText.length < 80) {
-        headingLevel = 1;
-      } else if (avgFontSize > 13 && trimmedText.length < 100) {
-        headingLevel = 2;
+      } else if (maxX - minX > viewport.width * 0.7) {
+        alignment = AlignmentType.BOTH;
       }
 
       paragraphs.push(
         new Paragraph({
           alignment,
-          heading: headingLevel ? (headingLevel === 1 ? HeadingLevel.HEADING_1 : HeadingLevel.HEADING_2) : undefined,
           spacing: { before: spaceBefore, after: spaceAfter, line: 276 },
           children: textRuns,
         })
