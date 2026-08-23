@@ -135,7 +135,15 @@ export const convertPdfToPng = async (file: File): Promise<Blob[]> => {
 
 export const convertDocxToPdf = async (file: File): Promise<Blob> => {
   const arrayBuffer = await file.arrayBuffer();
-  const result = await mammoth.convertToHtml({ arrayBuffer });
+  const result = await mammoth.convertToHtml(
+    { arrayBuffer },
+    {
+      styleMap: [
+        "br[type='page'] => hr.page-break",
+        "p[style-name='Page Break'] => hr.page-break",
+      ],
+    }
+  );
   const htmlContent = result.value;
 
   const tempDiv = document.createElement("div");
@@ -152,7 +160,7 @@ export const convertDocxToPdf = async (file: File): Promise<Blob> => {
     const page = document.createElement("div");
     page.style.width = "794px";
     page.style.height = "1123px";
-    page.style.padding = "72px 96px";
+    page.style.padding = "96px";
     page.style.boxSizing = "border-box";
     page.style.background = "#ffffff";
     page.style.color = "#000000";
@@ -174,6 +182,7 @@ export const convertDocxToPdf = async (file: File): Promise<Blob> => {
       table { width: 100%; border-collapse: collapse; margin-bottom: 12pt; }
       td, th { border: 1px solid #000000; padding: 6pt 8pt; font-size: 11pt; text-align: left; font-family: 'Times New Roman', Times, serif; }
       img { max-width: 100%; height: auto; display: block; margin: 10pt auto; }
+      hr.page-break { display: none; visibility: hidden; }
     `;
     page.appendChild(styleEl);
     return page;
@@ -185,6 +194,16 @@ export const convertDocxToPdf = async (file: File): Promise<Blob> => {
   pages.push(currentPage);
 
   for (const child of children) {
+    if (child.nodeType === Node.ELEMENT_NODE) {
+      const el = child as HTMLElement;
+      if (el.tagName === "HR" && el.classList.contains("page-break")) {
+        currentPage = createPage();
+        container.appendChild(currentPage);
+        pages.push(currentPage);
+        continue;
+      }
+    }
+
     const clone = child.cloneNode(true);
     currentPage.appendChild(clone);
 
