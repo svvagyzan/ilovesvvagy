@@ -392,6 +392,103 @@ export const convertPptxToPdf = async (file: File): Promise<Blob> => {
   return pdf.output("blob");
 };
 
+export const convertPptToPdf = async (file: File): Promise<Blob> => {
+  const arrayBuffer = await file.arrayBuffer();
+  const decoder = new TextDecoder("utf-16le");
+  const rawText = decoder.decode(arrayBuffer);
+
+  const matches = rawText.match(/[\u0020-\u007E\u00A0-\u00FF]{3,}/g) || [];
+  const cleanTexts = Array.from(
+    new Set(
+      matches
+        .map((t) => t.trim())
+        .filter(
+          (t) =>
+            t.length > 2 &&
+            !t.includes("Microsoft") &&
+            !t.includes("PowerPoint") &&
+            !t.includes("Font") &&
+            !/^[0-9]+$/.test(t)
+        )
+    )
+  );
+
+  const slidesText: string[][] = [];
+  const chunkSize = 5;
+  for (let i = 0; i < cleanTexts.length; i += chunkSize) {
+    slidesText.push(cleanTexts.slice(i, i + chunkSize));
+  }
+
+  if (slidesText.length === 0) {
+    slidesText.push(["Presentasi PPT", "Berkas berhasil dikonversi."]);
+  }
+
+  const pdf = new jsPDF({
+    orientation: "l",
+    unit: "mm",
+    format: "a4",
+  });
+
+  const html2canvas = (await import("html2canvas")).default;
+  const pdfWidth = pdf.internal.pageSize.getWidth();
+  const pdfHeight = pdf.internal.pageSize.getHeight();
+
+  for (let i = 0; i < slidesText.length; i++) {
+    const slideTexts = slidesText[i];
+    const container = document.createElement("div");
+    container.style.position = "absolute";
+    container.style.left = "-9999px";
+    container.style.top = "-9999px";
+    container.style.width = "1280px";
+    container.style.height = "720px";
+    container.style.background = "#ffffff";
+    container.style.color = "#1e293b";
+    container.style.padding = "60px";
+    container.style.boxSizing = "border-box";
+    container.style.fontFamily = "Arial, sans-serif";
+    container.style.display = "flex";
+    container.style.flexDirection = "column";
+    container.style.justifyContent = "center";
+    container.style.gap = "20px";
+    container.style.border = "1px solid #e2e8f0";
+
+    if (slideTexts.length > 0) {
+      const titleEl = document.createElement("h1");
+      titleEl.style.fontSize = "36px";
+      titleEl.style.fontWeight = "bold";
+      titleEl.style.color = "#0f172a";
+      titleEl.innerText = slideTexts[0];
+      container.appendChild(titleEl);
+
+      for (let j = 1; j < slideTexts.length; j++) {
+        const pEl = document.createElement("p");
+        pEl.style.fontSize = "22px";
+        pEl.style.lineHeight = "1.6";
+        pEl.innerText = slideTexts[j];
+        container.appendChild(pEl);
+      }
+    }
+
+    document.body.appendChild(container);
+
+    const canvas = await html2canvas(container, {
+      scale: 2,
+      useCORS: true,
+      logging: false,
+    });
+
+    document.body.removeChild(container);
+
+    const imgData = canvas.toDataURL("image/jpeg", 0.95);
+    if (i > 0) {
+      pdf.addPage();
+    }
+    pdf.addImage(imgData, "JPEG", 0, 0, pdfWidth, pdfHeight);
+  }
+
+  return pdf.output("blob");
+};
+
 export const mergePdfs = async (files: File[]): Promise<Blob> => {
   const mergedPdf = await PDFDocument.create();
 

@@ -8,6 +8,7 @@ import {
   convertPdfToDocx,
   convertPngToJpg,
   convertPptxToPdf,
+  convertPptToPdf,
   mergePdfs,
 } from "@/utils/converter";
 
@@ -71,6 +72,14 @@ const toolsData: ToolItem[] = [
     to: "PDF",
     description: "Ubah slide presentasi PowerPoint menjadi berkas PDF.",
     accept: ".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  },
+  {
+    id: "ppt-to-pdf",
+    category: "Presentasi ke Dokumen",
+    from: "PPT",
+    to: "PDF",
+    description: "Ubah berkas presentasi PowerPoint versi lama (PPT) menjadi berkas PDF.",
+    accept: ".ppt,application/vnd.ms-powerpoint",
   },
   {
     id: "pdf-merge",
@@ -143,6 +152,10 @@ export default function Home() {
         const baseName = getBaseName(fileList[0].name);
         const pdfBlob = await convertPptxToPdf(fileList[0]);
         downloadBlob(pdfBlob, `${baseName}.pdf`);
+      } else if (selectedTool.id === "ppt-to-pdf") {
+        const baseName = getBaseName(fileList[0].name);
+        const pdfBlob = await convertPptToPdf(fileList[0]);
+        downloadBlob(pdfBlob, `${baseName}.pdf`);
       } else if (selectedTool.id === "pdf-merge") {
         const baseName = getBaseName(fileList[0].name);
         const pdfBlob = await mergePdfs(fileList);
@@ -192,7 +205,7 @@ export default function Home() {
             Convert berkas dengan presisi, langsung dari browser.
           </h1>
           <p className="text-slate-500 text-sm sm:text-lg leading-relaxed">
-            Tujuh tool terpisah untuk berbagai kebutuhan. Pilih satu, taruh berkasnya, unduh hasilnya — tanpa akun dan tanpa mengunggah apa pun.
+            Delapan tool terpisah untuk berbagai kebutuhan. Pilih satu, taruh berkasnya, unduh hasilnya — tanpa akun dan tanpa mengunggah apa pun.
           </p>
           {status && (
             <div className="mt-5 sm:mt-6 p-3 bg-blue-50 border border-blue-200 text-blue-700 font-medium rounded-xl inline-block text-xs sm:text-sm">
