@@ -135,19 +135,7 @@ export const convertPdfToPng = async (file: File): Promise<Blob[]> => {
 
 export const convertDocxToPdf = async (file: File): Promise<Blob> => {
   const arrayBuffer = await file.arrayBuffer();
-  const result = await mammoth.convertToHtml(
-    { arrayBuffer },
-    {
-      styleMap: [
-        "p[style-name='Heading 1'] => h1:fresh",
-        "p[style-name='Heading 2'] => h2:fresh",
-        "p[style-name='Heading 3'] => h3:fresh",
-        "r[style-name='Strong'] => strong",
-        "r[style-name='Emphasis'] => em",
-      ],
-      includeDefaultStyleMap: true,
-    }
-  );
+  const result = await mammoth.convertToHtml({ arrayBuffer });
   const htmlContent = result.value;
 
   const container = document.createElement("div");
@@ -155,28 +143,30 @@ export const convertDocxToPdf = async (file: File): Promise<Blob> => {
   container.style.left = "-9999px";
   container.style.top = "-9999px";
   container.style.width = "794px";
-  container.style.minHeight = "1123px";
-  container.style.padding = "96px";
+  container.style.padding = "72px 96px";
   container.style.boxSizing = "border-box";
   container.style.background = "#ffffff";
   container.style.color = "#000000";
-  container.style.fontFamily = "'Times New Roman', Times, Calibri, Arial, serif";
-  container.style.fontSize = "16px";
-  container.style.lineHeight = "1.15";
-  container.style.whiteSpace = "pre-wrap";
+  container.style.fontFamily = "'Times New Roman', Times, serif";
+  container.style.fontSize = "12pt";
+  container.style.lineHeight = "1.5";
+
   container.innerHTML = `
     <style>
-      p { margin-top: 0; margin-bottom: 10px; text-align: justify; text-justify: inter-word; line-height: 1.15; word-break: break-word; }
-      h1 { font-size: 24px; font-weight: bold; margin-top: 14px; margin-bottom: 10px; color: #000; }
-      h2 { font-size: 20px; font-weight: bold; margin-top: 12px; margin-bottom: 8px; color: #000; }
-      h3 { font-size: 18px; font-weight: bold; margin-top: 10px; margin-bottom: 6px; color: #000; }
-      ol, ul { margin-top: 0; margin-bottom: 10px; padding-left: 24px; }
-      li { margin-bottom: 4px; line-height: 1.15; }
-      table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
-      td, th { border: 1px solid #000; padding: 6px 8px; font-size: 14px; text-align: left; }
-      img { max-width: 100%; height: auto; display: block; margin: 12px auto; }
+      * { box-sizing: border-box; }
+      body, div { font-family: 'Times New Roman', Times, serif; color: #000000; }
+      p { margin: 0 0 10pt 0; line-height: 1.5; text-align: justify; text-justify: inter-word; word-break: break-word; font-size: 12pt; }
+      h1, h2, h3, h4, h5, h6 { margin: 12pt 0 6pt 0; font-weight: bold; line-height: 1.2; color: #000000; }
+      h1 { font-size: 18pt; }
+      h2 { font-size: 16pt; }
+      h3 { font-size: 14pt; }
+      ul, ol { margin: 0 0 10pt 0; padding-left: 24pt; }
+      li { margin-bottom: 4pt; line-height: 1.5; }
+      table { width: 100%; border-collapse: collapse; margin-bottom: 12pt; }
+      td, th { border: 1px solid #000000; padding: 6pt 8pt; font-size: 11pt; text-align: left; }
+      img { max-width: 100%; height: auto; display: block; margin: 10pt auto; }
     </style>
-    ${htmlContent}
+    <div>${htmlContent}</div>
   `;
   document.body.appendChild(container);
 
