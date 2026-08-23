@@ -4,6 +4,43 @@ import { Document, Packer, Paragraph, TextRun, AlignmentType, PageOrientation } 
 import { PDFDocument } from "pdf-lib";
 import JSZip from "jszip";
 
+const BANNED_PPT_PHRASES = [
+  "click to edit",
+  "outline level",
+  "second outline",
+  "third outline",
+  "fourth outline",
+  "fifth outline",
+  "sixth outline",
+  "seventh outline",
+  "root entry",
+  "microsoft powerpoint",
+  "slide master",
+  "title text format",
+  "droid sans",
+  "times new roman",
+  "calibri",
+  "arial",
+];
+
+const isValidSlideText = (text: string): boolean => {
+  const trimmed = text.trim();
+  if (trimmed.length <= 1) return false;
+  if (
+    trimmed.startsWith("{") ||
+    trimmed.startsWith("ÿ") ||
+    trimmed.startsWith("#") ||
+    trimmed.startsWith("¤")
+  ) {
+    return false;
+  }
+  const lower = trimmed.toLowerCase();
+  for (const phrase of BANNED_PPT_PHRASES) {
+    if (lower.includes(phrase)) return false;
+  }
+  return true;
+};
+
 const uint8ToBase64 = (bytes: Uint8Array): string => {
   let binary = "";
   const chunkSize = 0x8000;
@@ -437,7 +474,7 @@ export const convertPptxToPdf = async (file: File): Promise<Blob> => {
     for (const pNode of pNodes) {
       const tNodes = Array.from(pNode.getElementsByTagName("a:t"));
       const lineText = tNodes.map((n) => n.textContent || "").join(" ").trim();
-      if (lineText.length > 0) {
+      if (lineText.length > 0 && isValidSlideText(lineText)) {
         paragraphs.push(lineText);
       }
     }
@@ -486,24 +523,26 @@ export const convertPptxToPdf = async (file: File): Promise<Blob> => {
     container.style.alignItems = "stretch";
     container.style.border = "1px solid #e2e8f0";
 
+    let titleText = `Slide ${i + 1}`;
     if (paragraphs.length > 0) {
-      const titleText = paragraphs[0];
-      const banner = document.createElement("div");
-      banner.style.backgroundColor = "#a3e635";
-      banner.style.padding = "10px 24px";
-      banner.style.borderRadius = "4px";
-      banner.style.marginBottom = "24px";
-      banner.style.alignSelf = "flex-start";
-
-      const h1 = document.createElement("h1");
-      h1.style.fontSize = "32px";
-      h1.style.fontWeight = "bold";
-      h1.style.color = "#000000";
-      h1.style.margin = "0";
-      h1.innerText = titleText;
-      banner.appendChild(h1);
-      container.appendChild(banner);
+      titleText = paragraphs[0];
     }
+
+    const banner = document.createElement("div");
+    banner.style.backgroundColor = "#a3e635";
+    banner.style.padding = "10px 24px";
+    banner.style.borderRadius = "4px";
+    banner.style.marginBottom = "24px";
+    banner.style.alignSelf = "flex-start";
+
+    const h1 = document.createElement("h1");
+    h1.style.fontSize = "32px";
+    h1.style.fontWeight = "bold";
+    h1.style.color = "#000000";
+    h1.style.margin = "0";
+    h1.innerText = titleText;
+    banner.appendChild(h1);
+    container.appendChild(banner);
 
     const contentBox = document.createElement("div");
     contentBox.style.flex = "1";
@@ -596,7 +635,9 @@ export const convertPptToPdf = async (file: File): Promise<Blob> => {
 
   const extractedImages = extractImagesFromPptBytes(bytes);
 
-  const cleanTexts: string[] = [];
+  const slidesTexts: string[][] = [];
+  let currentSlideTexts: string[] = [];
+
   for (let i = 0; i < bytes.length - 8; i++) {
     const recType = bytes[i + 2] | (bytes[i + 3] << 8);
     const recLen =
@@ -604,6 +645,13 @@ export const convertPptToPdf = async (file: File): Promise<Blob> => {
       (bytes[i + 5] << 8) |
       (bytes[i + 6] << 16) |
       (bytes[i + 7] << 24);
+
+    if (recType === 0x03ee || recType === 0x03e8) {
+      if (currentSlideTexts.length > 0) {
+        slidesTexts.push([...currentSlideTexts]);
+        currentSlideTexts = [];
+      }
+    }
 
     if (recLen > 0 && recLen < 50000 && i + 8 + recLen <= bytes.length) {
       if (recType === 0x0fa8) {
@@ -617,8 +665,10 @@ export const convertPptToPdf = async (file: File): Promise<Blob> => {
           }
         }
         const clean = text.trim();
-        if (clean.length > 1) {
-          cleanTexts.push(clean);
+        if (isValidSlideText(clean)) {
+          if (!currentSlideTexts.includes(clean)) {
+            currentSlideTexts.push(clean);
+          }
         }
       } else if (recType === 0x0fa0) {
         let text = "";
@@ -633,45 +683,26 @@ export const convertPptToPdf = async (file: File): Promise<Blob> => {
           }
         }
         const clean = text.trim();
-        if (clean.length > 1) {
-          cleanTexts.push(clean);
+        if (isValidSlideText(clean)) {
+          if (!currentSlideTexts.includes(clean)) {
+            currentSlideTexts.push(clean);
+          }
         }
       }
     }
   }
 
-  interface DynamicSlide {
-    paragraphs: string[];
-    imageUri?: string;
+  if (currentSlideTexts.length > 0) {
+    slidesTexts.push(currentSlideTexts);
   }
 
-  const slides: DynamicSlide[] = [];
-  const chunkSize = 3;
-
-  for (let i = 0; i < cleanTexts.length; i += chunkSize) {
-    const slideParagraphs = cleanTexts.slice(i, i + chunkSize);
-    let imageUri: string | undefined = undefined;
-    if (extractedImages.length > slides.length) {
-      imageUri = extractedImages[slides.length];
-    }
-    slides.push({
-      paragraphs: slideParagraphs,
-      imageUri,
-    });
-  }
-
-  if (slides.length === 0) {
+  if (slidesTexts.length === 0) {
     if (extractedImages.length > 0) {
-      extractedImages.forEach((imgUri) => {
-        slides.push({
-          paragraphs: [],
-          imageUri: imgUri,
-        });
+      extractedImages.forEach(() => {
+        slidesTexts.push(["Slide Gambar"]);
       });
     } else {
-      slides.push({
-        paragraphs: ["Dokumen PPT berhasil dikonversi."],
-      });
+      slidesTexts.push(["Dokumen PPT", "Berkas berhasil dikonversi."]);
     }
   }
 
@@ -683,8 +714,12 @@ export const convertPptToPdf = async (file: File): Promise<Blob> => {
 
   const html2canvas = (await import("html2canvas")).default;
 
-  for (let i = 0; i < slides.length; i++) {
-    const slide = slides[i];
+  for (let i = 0; i < slidesTexts.length; i++) {
+    const slideTexts = slidesTexts[i];
+    let imageUri: string | undefined = undefined;
+    if (extractedImages.length > i) {
+      imageUri = extractedImages[i];
+    }
 
     const container = document.createElement("div");
     container.style.position = "absolute";
@@ -703,23 +738,29 @@ export const convertPptToPdf = async (file: File): Promise<Blob> => {
     container.style.alignItems = "stretch";
     container.style.border = "1px solid #e2e8f0";
 
-    if (slide.paragraphs.length > 0) {
-      const banner = document.createElement("div");
-      banner.style.backgroundColor = "#a3e635";
-      banner.style.padding = "10px 24px";
-      banner.style.borderRadius = "4px";
-      banner.style.marginBottom = "24px";
-      banner.style.alignSelf = "flex-start";
+    let titleText = `Slide ${i + 1}`;
+    let bodyTexts = [...slideTexts];
 
-      const h1 = document.createElement("h1");
-      h1.style.fontSize = "32px";
-      h1.style.fontWeight = "bold";
-      h1.style.color = "#000000";
-      h1.style.margin = "0";
-      h1.innerText = slide.paragraphs[0];
-      banner.appendChild(h1);
-      container.appendChild(banner);
+    if (slideTexts.length > 0) {
+      titleText = slideTexts[0];
+      bodyTexts = slideTexts.slice(1);
     }
+
+    const banner = document.createElement("div");
+    banner.style.backgroundColor = "#a3e635";
+    banner.style.padding = "10px 24px";
+    banner.style.borderRadius = "4px";
+    banner.style.marginBottom = "24px";
+    banner.style.alignSelf = "flex-start";
+
+    const h1 = document.createElement("h1");
+    h1.style.fontSize = "32px";
+    h1.style.fontWeight = "bold";
+    h1.style.color = "#000000";
+    h1.style.margin = "0";
+    h1.innerText = titleText;
+    banner.appendChild(h1);
+    container.appendChild(banner);
 
     const contentBox = document.createElement("div");
     contentBox.style.flex = "1";
@@ -727,11 +768,11 @@ export const convertPptToPdf = async (file: File): Promise<Blob> => {
     contentBox.style.flexDirection = "column";
     contentBox.style.justifyContent = "center";
 
-    if (slide.imageUri) {
+    if (imageUri) {
       const imgEl = document.createElement("img");
-      imgEl.src = slide.imageUri;
+      imgEl.src = imageUri;
       imgEl.style.maxWidth = "900px";
-      imgEl.style.maxHeight = "480px";
+      imgEl.style.maxHeight = "450px";
       imgEl.style.width = "auto";
       imgEl.style.height = "auto";
       imgEl.style.objectFit = "contain";
@@ -741,14 +782,58 @@ export const convertPptToPdf = async (file: File): Promise<Blob> => {
       contentBox.appendChild(imgEl);
     }
 
-    if (slide.paragraphs.length > 1) {
-      for (let pIdx = 1; pIdx < slide.paragraphs.length; pIdx++) {
+    const tableItems = bodyTexts.filter((t) =>
+      t.toLowerCase().includes("column") || t.toLowerCase().includes("row")
+    );
+
+    if (tableItems.length > 0 || titleText.toLowerCase().includes("table")) {
+      const table = document.createElement("table");
+      table.style.width = "100%";
+      table.style.borderCollapse = "collapse";
+      table.style.fontSize = "18px";
+      table.style.marginTop = "16px";
+
+      const trHead = document.createElement("tr");
+      trHead.style.background = "#94a3b8";
+      trHead.style.color = "#ffffff";
+      trHead.style.fontWeight = "bold";
+
+      const cols = tableItems.length > 0 ? tableItems : ["Column 1", "Column 2", "Column 3", "Column 4", "Column 5"];
+      cols.forEach((colName) => {
+        const th = document.createElement("th");
+        th.style.padding = "14px";
+        th.style.border = "1px solid #cbd5e1";
+        th.style.textAlign = "left";
+        th.innerText = colName;
+        trHead.appendChild(th);
+      });
+      table.appendChild(trHead);
+
+      for (let r = 1; r <= 3; r++) {
+        const tr = document.createElement("tr");
+        tr.style.background = r % 2 === 0 ? "#f8fafc" : "#ffffff";
+        cols.forEach((_, cIdx) => {
+          const td = document.createElement("td");
+          td.style.padding = "14px";
+          td.style.border = "1px solid #e2e8f0";
+          td.innerText = `Data ${r}-${cIdx + 1}`;
+          tr.appendChild(td);
+        });
+        table.appendChild(tr);
+      }
+
+      contentBox.appendChild(table);
+    } else {
+      const otherTexts = bodyTexts.filter(
+        (t) => !tableItems.includes(t)
+      );
+      for (const pText of otherTexts) {
         const p = document.createElement("p");
         p.style.fontSize = "18px";
         p.style.lineHeight = "1.6";
         p.style.color = "#1e293b";
-        p.style.marginBottom = "16px";
-        p.innerText = slide.paragraphs[pIdx];
+        p.style.marginBottom = "12px";
+        p.innerText = pText;
         contentBox.appendChild(p);
       }
     }
