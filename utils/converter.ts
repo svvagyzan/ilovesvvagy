@@ -314,13 +314,11 @@ export const convertPptxToPdf = async (file: File): Promise<Blob> => {
 
   const pdf = new jsPDF({
     orientation: "l",
-    unit: "mm",
-    format: "a4",
+    unit: "px",
+    format: [1280, 720],
   });
 
   const html2canvas = (await import("html2canvas")).default;
-  const pdfWidth = pdf.internal.pageSize.getWidth();
-  const pdfHeight = pdf.internal.pageSize.getHeight();
 
   for (let i = 0; i < slideFiles.length; i++) {
     const slideXmlText = await zip.file(slideFiles[i])?.async("string");
@@ -341,33 +339,44 @@ export const convertPptxToPdf = async (file: File): Promise<Blob> => {
     container.style.height = "720px";
     container.style.background = "#ffffff";
     container.style.color = "#1e293b";
-    container.style.padding = "60px";
+    container.style.padding = "80px";
     container.style.boxSizing = "border-box";
     container.style.fontFamily = "Arial, sans-serif";
     container.style.display = "flex";
     container.style.flexDirection = "column";
     container.style.justifyContent = "center";
-    container.style.gap = "20px";
-    container.style.border = "1px solid #e2e8f0";
+    container.style.alignItems = "center";
+    container.style.textAlign = "center";
 
     if (slideTexts.length > 0) {
       const titleEl = document.createElement("h1");
-      titleEl.style.fontSize = "36px";
+      titleEl.style.fontSize = "48px";
       titleEl.style.fontWeight = "bold";
       titleEl.style.color = "#0f172a";
+      titleEl.style.marginBottom = "32px";
       titleEl.innerText = slideTexts[0];
       container.appendChild(titleEl);
 
+      const contentBox = document.createElement("div");
+      contentBox.style.display = "flex";
+      contentBox.style.flexDirection = "column";
+      contentBox.style.gap = "16px";
+      contentBox.style.width = "100%";
+      contentBox.style.alignItems = "center";
+
       for (let j = 1; j < slideTexts.length; j++) {
         const pEl = document.createElement("p");
-        pEl.style.fontSize = "22px";
-        pEl.style.lineHeight = "1.6";
+        pEl.style.fontSize = "28px";
+        pEl.style.lineHeight = "1.5";
+        pEl.style.margin = "0";
+        pEl.style.maxWidth = "1000px";
         pEl.innerText = slideTexts[j];
-        container.appendChild(pEl);
+        contentBox.appendChild(pEl);
       }
+      container.appendChild(contentBox);
     } else {
       const emptyEl = document.createElement("p");
-      emptyEl.style.fontSize = "24px";
+      emptyEl.style.fontSize = "32px";
       emptyEl.innerText = `Slide ${i + 1}`;
       container.appendChild(emptyEl);
     }
@@ -384,9 +393,9 @@ export const convertPptxToPdf = async (file: File): Promise<Blob> => {
 
     const imgData = canvas.toDataURL("image/jpeg", 0.95);
     if (i > 0) {
-      pdf.addPage();
+      pdf.addPage([1280, 720], "l");
     }
-    pdf.addImage(imgData, "JPEG", 0, 0, pdfWidth, pdfHeight);
+    pdf.addImage(imgData, "JPEG", 0, 0, 1280, 720);
   }
 
   return pdf.output("blob");
@@ -471,13 +480,11 @@ export const convertPptToPdf = async (file: File): Promise<Blob> => {
 
   const pdf = new jsPDF({
     orientation: "l",
-    unit: "mm",
-    format: "a4",
+    unit: "px",
+    format: [1280, 720],
   });
 
   const html2canvas = (await import("html2canvas")).default;
-  const pdfWidth = pdf.internal.pageSize.getWidth();
-  const pdfHeight = pdf.internal.pageSize.getHeight();
 
   for (let i = 0; i < slidesText.length; i++) {
     const slideTexts = slidesText[i];
@@ -489,30 +496,46 @@ export const convertPptToPdf = async (file: File): Promise<Blob> => {
     container.style.height = "720px";
     container.style.background = "#ffffff";
     container.style.color = "#1e293b";
-    container.style.padding = "60px";
+    container.style.padding = "80px";
     container.style.boxSizing = "border-box";
     container.style.fontFamily = "Arial, sans-serif";
     container.style.display = "flex";
     container.style.flexDirection = "column";
     container.style.justifyContent = "center";
-    container.style.gap = "20px";
-    container.style.border = "1px solid #e2e8f0";
+    container.style.alignItems = "center";
+    container.style.textAlign = "center";
 
     if (slideTexts.length > 0) {
       const titleEl = document.createElement("h1");
-      titleEl.style.fontSize = "36px";
+      titleEl.style.fontSize = "48px";
       titleEl.style.fontWeight = "bold";
       titleEl.style.color = "#0f172a";
+      titleEl.style.marginBottom = "32px";
       titleEl.innerText = slideTexts[0];
       container.appendChild(titleEl);
 
+      const contentBox = document.createElement("div");
+      contentBox.style.display = "flex";
+      contentBox.style.flexDirection = "column";
+      contentBox.style.gap = "16px";
+      contentBox.style.width = "100%";
+      contentBox.style.alignItems = "center";
+
       for (let j = 1; j < slideTexts.length; j++) {
         const pEl = document.createElement("p");
-        pEl.style.fontSize = "22px";
-        pEl.style.lineHeight = "1.6";
+        pEl.style.fontSize = "28px";
+        pEl.style.lineHeight = "1.5";
+        pEl.style.margin = "0";
+        pEl.style.maxWidth = "1000px";
         pEl.innerText = slideTexts[j];
-        container.appendChild(pEl);
+        contentBox.appendChild(pEl);
       }
+      container.appendChild(contentBox);
+    } else {
+      const emptyEl = document.createElement("p");
+      emptyEl.style.fontSize = "32px";
+      emptyEl.innerText = `Slide ${i + 1}`;
+      container.appendChild(emptyEl);
     }
 
     document.body.appendChild(container);
@@ -527,9 +550,9 @@ export const convertPptToPdf = async (file: File): Promise<Blob> => {
 
     const imgData = canvas.toDataURL("image/jpeg", 0.95);
     if (i > 0) {
-      pdf.addPage();
+      pdf.addPage([1280, 720], "l");
     }
-    pdf.addImage(imgData, "JPEG", 0, 0, pdfWidth, pdfHeight);
+    pdf.addImage(imgData, "JPEG", 0, 0, 1280, 720);
   }
 
   return pdf.output("blob");
