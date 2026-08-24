@@ -4,7 +4,6 @@ import React, { useRef, useState } from "react";
 import {
   convertPngToPdf,
   convertPdfToPng,
-  convertDocxToPdf,
   convertPdfToDocx,
   convertPngToJpg,
   convertPptxToPdf,
@@ -136,7 +135,20 @@ export default function Home() {
         });
       } else if (selectedTool.id === "docx-to-pdf") {
         const baseName = getBaseName(fileList[0].name);
-        const pdfBlob = await convertDocxToPdf(fileList[0]);
+        const apiFormData = new FormData();
+        apiFormData.append("file", fileList[0]);
+
+        const response = await fetch("/api/convert", {
+          method: "POST",
+          body: apiFormData,
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || "Gagal mengkonversi dokumen");
+        }
+
+        const pdfBlob = await response.blob();
         downloadBlob(pdfBlob, `${baseName}.pdf`);
       } else if (selectedTool.id === "pdf-to-docx") {
         const baseName = getBaseName(fileList[0].name);
@@ -162,8 +174,8 @@ export default function Home() {
         downloadBlob(pdfBlob, `${baseName}-merged.pdf`);
       }
       setStatus("Konversi selesai! Berkas berhasil diunduh.");
-    } catch {
-      setStatus("Gagal memproses konversi. Pastikan format berkas sesuai.");
+    } catch (err: any) {
+      setStatus(err.message || "Gagal memproses konversi. Pastikan format berkas sesuai.");
     } finally {
       if (fileInputRef.current) {
         fileInputRef.current.value = "";

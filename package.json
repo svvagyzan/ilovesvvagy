@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@adobe/pdfservices-node-sdk": "^4.1.0",
     "@supabase/supabase-js": "^2.112.3",
     "docx": "^9.7.1",
     "html2canvas": "^1.4.1",
