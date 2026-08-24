@@ -138,83 +138,60 @@ export const convertDocxToPdf = async (file: File): Promise<Blob> => {
   const result = await mammoth.convertToHtml(
     { arrayBuffer },
     {
+      includeDefaultStyleMap: true,
       styleMap: [
-        "br[type='page'] => hr.page-break",
-        "p[style-name='Page Break'] => hr.page-break",
+        "p[style-name='Heading 1'] => h1:fresh",
+        "p[style-name='Heading 2'] => h2:fresh",
+        "p[style-name='Heading 3'] => h3:fresh",
+        "p[style-name='Title'] => h1.title:fresh",
+        "p[style-name='Subtitle'] => p.subtitle:fresh",
+        "r[style-name='Strong'] => strong",
+        "r[style-name='Emphasis'] => em",
+        "u => u",
+        "strike => s",
+        "br[type='page'] => div.page-break-marker"
       ],
     }
   );
   const htmlContent = result.value;
 
-  const tempDiv = document.createElement("div");
-  tempDiv.innerHTML = htmlContent;
-  const children = Array.from(tempDiv.childNodes);
-
   const container = document.createElement("div");
   container.style.position = "absolute";
   container.style.left = "-9999px";
   container.style.top = "-9999px";
-  document.body.appendChild(container);
+  container.style.width = "794px";
+  container.style.padding = "54px 64px";
+  container.style.boxSizing = "border-box";
+  container.style.background = "#ffffff";
+  container.style.color = "#000000";
 
-  const createPage = () => {
-    const page = document.createElement("div");
-    page.style.width = "794px";
-    page.style.height = "1123px";
-    page.style.padding = "96px";
-    page.style.boxSizing = "border-box";
-    page.style.background = "#ffffff";
-    page.style.color = "#000000";
-    page.style.fontFamily = "'Times New Roman', Times, serif";
-    page.style.fontSize = "12pt";
-    page.style.lineHeight = "1.5";
-    page.style.overflow = "hidden";
-
-    const styleEl = document.createElement("style");
-    styleEl.innerHTML = `
+  container.innerHTML = `
+    <style>
       * { box-sizing: border-box; }
-      p { margin: 0 0 10pt 0; line-height: 1.5; text-align: justify; text-justify: inter-word; word-break: break-word; font-size: 12pt; font-family: 'Times New Roman', Times, serif; }
-      h1, h2, h3, h4, h5, h6 { margin: 12pt 0 6pt 0; font-weight: bold; line-height: 1.2; color: #000000; font-family: 'Times New Roman', Times, serif; }
-      h1 { font-size: 18pt; }
-      h2 { font-size: 16pt; }
-      h3 { font-size: 14pt; }
-      ul, ol { margin: 0 0 10pt 0; padding-left: 24pt; }
-      li { margin-bottom: 4pt; line-height: 1.5; font-size: 12pt; font-family: 'Times New Roman', Times, serif; }
-      table { width: 100%; border-collapse: collapse; margin-bottom: 12pt; }
-      td, th { border: 1px solid #000000; padding: 6pt 8pt; font-size: 11pt; text-align: left; font-family: 'Times New Roman', Times, serif; }
-      img { max-width: 100%; height: auto; display: block; margin: 10pt auto; }
-      hr.page-break { display: none; visibility: hidden; }
-    `;
-    page.appendChild(styleEl);
-    return page;
-  };
-
-  const pages: HTMLElement[] = [];
-  let currentPage = createPage();
-  container.appendChild(currentPage);
-  pages.push(currentPage);
-
-  for (const child of children) {
-    if (child.nodeType === Node.ELEMENT_NODE) {
-      const el = child as HTMLElement;
-      if (el.tagName === "HR" && el.classList.contains("page-break")) {
-        currentPage = createPage();
-        container.appendChild(currentPage);
-        pages.push(currentPage);
-        continue;
+      #docx-render-root {
+        font-family: Calibri, Arial, "Segoe UI", "Times New Roman", sans-serif;
+        color: #000000;
+        font-size: 11pt;
+        line-height: 1.25;
+        text-align: left;
+        word-wrap: break-word;
       }
-    }
-
-    const clone = child.cloneNode(true);
-    currentPage.appendChild(clone);
-
-    if (currentPage.scrollHeight > 1123 && currentPage.children.length > 2) {
-      currentPage.removeChild(clone);
-      currentPage = createPage();
-      container.appendChild(currentPage);
-      pages.push(currentPage);
-      currentPage.appendChild(clone);
-    }
-  }
+      #docx-render-root p { margin: 0 0 6pt 0; line-height: 1.25; }
+      #docx-render-root h1 { font-size: 18pt; font-weight: bold; margin: 12pt 0 6pt 0; color: #111111; line-height: 1.2; }
+      #docx-render-root h2 { font-size: 15pt; font-weight: bold; margin: 10pt 0 5pt 0; color: #222222; line-height: 1.2; }
+      #docx-render-root h3 { font-size: 13pt; font-weight: bold; margin: 8pt 0 4pt 0; color: #333333; line-height: 1.2; }
+      #docx-render-root ul, #docx-render-root ol { margin: 0 0 8pt 0; padding-left: 20pt; }
+      #docx-render-root li { margin-bottom: 3pt; line-height: 1.25; }
+      #docx-render-root table { width: 100%; border-collapse: collapse; margin: 8pt 0 12pt 0; font-size: 10pt; }
+      #docx-render-root td, #docx-render-root th { border: 1px solid #444444; padding: 5pt 7pt; text-align: left; vertical-align: top; }
+      #docx-render-root th { background-color: #f2f2f2; font-weight: bold; }
+      #docx-render-root img { max-width: 100%; height: auto; display: block; margin: 8pt auto; }
+      #docx-render-root blockquote { margin: 8pt 0 8pt 16pt; padding-left: 10pt; border-left: 3px solid #ccc; color: #444444; font-style: italic; }
+      .page-break-marker { display: block; height: 0; }
+    </style>
+    <div id="docx-render-root">${htmlContent}</div>
+  `;
+  document.body.appendChild(container);
 
   const images = Array.from(container.querySelectorAll("img"));
   await Promise.all(
@@ -231,28 +208,103 @@ export const convertDocxToPdf = async (file: File): Promise<Blob> => {
     )
   );
 
+  const PAGE_HEIGHT_PX = 1123;
+  const root = container.querySelector("#docx-render-root") as HTMLElement;
+
+  if (root) {
+    const blocks = Array.from(root.children) as HTMLElement[];
+
+    for (let i = 0; i < blocks.length; i++) {
+      const block = blocks[i];
+
+      if (block.classList.contains("page-break-marker")) {
+        const currentTop = block.offsetTop;
+        const currentPageNum = Math.floor(currentTop / PAGE_HEIGHT_PX);
+        const targetTop = (currentPageNum + 1) * PAGE_HEIGHT_PX;
+        const spacerNeeded = targetTop - currentTop;
+        if (spacerNeeded > 0) {
+          const spacer = document.createElement("div");
+          spacer.style.height = `${spacerNeeded}px`;
+          spacer.style.width = "100%";
+          root.insertBefore(spacer, block);
+        }
+        continue;
+      }
+
+      const top = block.offsetTop;
+      const height = block.offsetHeight;
+
+      if (height === 0) continue;
+
+      const startPage = Math.floor(top / PAGE_HEIGHT_PX);
+      const endPage = Math.floor((top + height - 1) / PAGE_HEIGHT_PX);
+
+      if (startPage !== endPage && height < PAGE_HEIGHT_PX - 100) {
+        const nextPageTop = (startPage + 1) * PAGE_HEIGHT_PX;
+        const spacerHeight = nextPageTop - top;
+        if (spacerHeight > 0) {
+          const spacer = document.createElement("div");
+          spacer.style.height = `${spacerHeight}px`;
+          spacer.style.width = "100%";
+          root.insertBefore(spacer, block);
+        }
+      }
+    }
+  }
+
   const html2canvas = (await import("html2canvas")).default;
+  const canvas = await html2canvas(container, {
+    scale: 2,
+    useCORS: true,
+    logging: false,
+    windowWidth: 794,
+  });
+
+  document.body.removeChild(container);
+
   const pdf = new jsPDF("p", "mm", "a4");
   const pdfWidth = pdf.internal.pageSize.getWidth();
   const pdfHeight = pdf.internal.pageSize.getHeight();
 
-  for (let i = 0; i < pages.length; i++) {
-    const pageEl = pages[i];
-    const canvas = await html2canvas(pageEl, {
-      scale: 2,
-      useCORS: true,
-      logging: false,
-      windowWidth: 794,
-    });
+  const totalHeightPx = canvas.height;
+  const pageHeightPx = Math.round((canvas.width * 297) / 210);
 
-    const pageImgData = canvas.toDataURL("image/jpeg", 0.98);
-    if (i > 0) {
+  const pageCanvas = document.createElement("canvas");
+  pageCanvas.width = canvas.width;
+  pageCanvas.height = pageHeightPx;
+  const pageCtx = pageCanvas.getContext("2d");
+
+  let renderedHeight = 0;
+  let pageIndex = 0;
+
+  while (renderedHeight < totalHeightPx) {
+    if (pageIndex > 0) {
       pdf.addPage();
     }
+
+    if (pageCtx) {
+      pageCtx.fillStyle = "#ffffff";
+      pageCtx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+      pageCtx.drawImage(
+        canvas,
+        0,
+        renderedHeight,
+        canvas.width,
+        pageHeightPx,
+        0,
+        0,
+        canvas.width,
+        pageHeightPx
+      );
+    }
+
+    const pageImgData = pageCanvas.toDataURL("image/jpeg", 0.98);
     pdf.addImage(pageImgData, "JPEG", 0, 0, pdfWidth, pdfHeight);
+
+    renderedHeight += pageHeightPx;
+    pageIndex++;
   }
 
-  document.body.removeChild(container);
   return pdf.output("blob");
 };
 
