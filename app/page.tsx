@@ -4,7 +4,6 @@ import React, { useRef, useState } from "react";
 import {
   convertPngToPdf,
   convertPdfToPng,
-  convertPdfToDocx,
   convertPngToJpg,
   convertPptxToPdf,
   convertPptToPdf,
@@ -152,7 +151,20 @@ export default function Home() {
         downloadBlob(pdfBlob, `${baseName}.pdf`);
       } else if (selectedTool.id === "pdf-to-docx") {
         const baseName = getBaseName(fileList[0].name);
-        const docxBlob = await convertPdfToDocx(fileList[0]);
+        const apiFormData = new FormData();
+        apiFormData.append("file", fileList[0]);
+
+        const response = await fetch("/api/convert", {
+          method: "POST",
+          body: apiFormData,
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || "Gagal mengkonversi PDF ke DOCX");
+        }
+
+        const docxBlob = await response.blob();
         downloadBlob(docxBlob, `${baseName}.docx`);
       } else if (selectedTool.id === "png-to-jpg") {
         const jpgBlobs = await convertPngToJpg(fileList);
